@@ -1,7 +1,8 @@
 const axios = require('axios');
 const fs = require('fs');
 const xml2js = require('xml2js');
-const { sitemapUrl } = require('./config'); // sitemap URL is in config.js
+const { sitemapUrl } = require('./config');
+const path = require('path');
 
 async function fetchXml(url) {
     try {
@@ -16,8 +17,7 @@ async function fetchXml(url) {
 async function parseXml(xml) {
     const parser = new xml2js.Parser();
     try {
-        const result = await parser.parseStringPromise(xml);
-        return result;
+        return await parser.parseStringPromise(xml);
     } catch (error) {
         console.error(`Error parsing XML: ${error.message}`);
         process.exit(1);
@@ -28,13 +28,11 @@ async function getSitemapsOrUrls(xmlContent) {
     const parsedXml = await parseXml(xmlContent);
 
     if (parsedXml.sitemapindex && parsedXml.sitemapindex.sitemap) {
-        // sitemap index
         return {
             type: 'index',
             urls: parsedXml.sitemapindex.sitemap.map((sitemap) => sitemap.loc[0])
         };
     } else if (parsedXml.urlset && parsedXml.urlset.url) {
-        // regular sitemap
         return {
             type: 'sitemap',
             urls: parsedXml.urlset.url.map((url) => url.loc[0])
@@ -53,42 +51,73 @@ async function checkUrlStatus(url) {
     }
 }
 
+function generateFilename(baseName, directory) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const parsedUrl = new URL(baseName);
+    const domainName = parsedUrl.hostname.replace(/\./g, '_');
+    const dirPath = path.join(__dirname, domainName);
+
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath);
+    }
+
+    return path.join(dirPath, `${directory}_${timestamp}.csv`);
+}
+
+async function processSitemap(sitemapUrl) {
+    const sitemapXml = await fetchXml(sitemapUrl);
+    const sitemapUrls = (await getSitemapsOrUrls(sitemapXml)).urls;
+
+    const results = [];
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const url of sitemapUrls) {
+        const { url: checkedUrl, status } = await checkUrlStatus(url);
+        if (status === 200) successCount++;
+        else errorCount++;
+        results.push({ url: checkedUrl, status });
+        console.log(`Checked ${checkedUrl}: ${status}`);
+    }
+
+    const csvContent = results
+        .map((result) => `${result.url},${result.status}`)
+        .join('\n');
+    const totalUrls = results.length;
+    const summary = `Total URLs Checked:,${totalUrls}\nSuccessful:,${successCount}\nErrors:,${errorCount}`;
+    const filename = generateFilename(sitemapUrl, path.basename(sitemapUrl, '.xml'));
+
+    fs.writeFileSync(filename, `URL,Status\n${csvContent}\n${summary}`);
+    console.log(`Results saved to ${filename}`);
+
+    return { totalUrls, successCount, errorCount };
+}
 async function main() {
     const xmlContent = await fetchXml(sitemapUrl);
     const { type, urls } = await getSitemapsOrUrls(xmlContent);
 
-    const results = [];
+    let totalUrls = 0;
+    let successCount = 0;
+    let errorCount = 0;
 
     if (type === 'index') {
         for (const sitemapUrl of urls) {
             console.log(`Processing sitemap: ${sitemapUrl}`);
-            const sitemapXml = await fetchXml(sitemapUrl);
-            const sitemapUrls = (await getSitemapsOrUrls(sitemapXml)).urls;
-
-            for (const url of sitemapUrls) {
-                const { url: checkedUrl, status } = await checkUrlStatus(url);
-                const inSitemap = status === 200 ? 'YES' : 'NO';
-                results.push({ url: checkedUrl, status, inSitemap });
-                console.log(`Checked ${checkedUrl}: ${status}`);
-            }
+            const result = await processSitemap(sitemapUrl);
+            totalUrls += result.totalUrls;
+            successCount += result.successCount;
+            errorCount += result.errorCount;
         }
     } else if (type === 'sitemap') {
-        for (const url of urls) {
-            const { url: checkedUrl, status } = await checkUrlStatus(url);
-            const inSitemap = status === 200 ? 'YES' : 'NO';
-            results.push({ url: checkedUrl, status, inSitemap });
-            console.log(`Checked ${checkedUrl}: ${status}`);
-        }
+        const result = await processSitemap(sitemapUrl);
+        totalUrls = result.totalUrls;
+        successCount = result.successCount;
+        errorCount = result.errorCount;
     }
 
-    const totalUrls = results.length;
-    const csvContent = results
-        .map((result) => `${result.url},${result.status},${result.inSitemap}`)
-        .join('\n');
-    const summary = `Total URLs Checked:,${totalUrls}`;
-
-    fs.writeFileSync('sitemap_status.csv', `URL,Status,inSitemap\n${csvContent}\n${summary}`);
-    console.log('Results saved to sitemap_status.csv');
+    console.log(`Summary: Verified ${totalUrls} URLs, ${successCount} have 200 status code, ${errorCount} have errors.`);
 }
 
 main();
+
