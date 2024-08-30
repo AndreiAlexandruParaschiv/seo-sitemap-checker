@@ -55,9 +55,15 @@ function generateFilename(baseName, directory) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const parsedUrl = new URL(baseName);
     const domainName = parsedUrl.hostname.replace(/\./g, '_');
-    const dirPath = path.join(__dirname, domainName);
+    const resultsDir = path.join(__dirname, 'results');
+    const dirPath = path.join(resultsDir, domainName);
 
-    // Create directory if it doesn't exist
+    // Create results directory if it doesn't exist
+    if (!fs.existsSync(resultsDir)) {
+        fs.mkdirSync(resultsDir);
+    }
+
+    // Create domain-specific directory if it doesn't exist
     if (!fs.existsSync(dirPath)) {
         fs.mkdirSync(dirPath);
     }
@@ -93,6 +99,7 @@ async function processSitemap(sitemapUrl) {
 
     return { totalUrls, successCount, errorCount };
 }
+
 async function main() {
     const xmlContent = await fetchXml(sitemapUrl);
     const { type, urls } = await getSitemapsOrUrls(xmlContent);
@@ -120,4 +127,3 @@ async function main() {
 }
 
 main();
-
