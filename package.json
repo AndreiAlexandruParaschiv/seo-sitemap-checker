@@ -2,7 +2,7 @@
   "name": "seo-sitemap-checker",
   "version": "1.0.0",
   "description": "SEO Sitemap checker",
-  "main": "checkSitemap.js",
+  "main": "sitemap.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -12,6 +12,7 @@
   "dependencies": {
     "axios": "^1.7.5",
     "fs": "^0.0.1-security",
+    "jsdom": "^25.0.0",
     "xml2js": "^0.6.2"
   }
 }

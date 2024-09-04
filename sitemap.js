@@ -1,7 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const xml2js = require('xml2js');
-const { sitemapUrl } = require('./config');
+const { sitemapUrls } = require('./config'); // Importing multiple sitemap URLs
 const path = require('path');
 
 async function fetchXml(url) {
@@ -44,9 +44,23 @@ async function getSitemapsOrUrls(xmlContent) {
 
 async function checkUrlStatus(url) {
     try {
-        const response = await axios.get(url);
+        const response = await axios.get(url, {
+            maxRedirects: 0, // Prevent following redirects
+            validateStatus: (status) => status < 400 // Accept 3xx status codes as valid
+        });
+
+        // Handle 3xx redirects
+        if (response.status === 301 || response.status === 302) {
+            return {
+                url,
+                status: response.status,
+                redirectUrl: response.headers.location
+            };
+        }
+
         return { url, status: response.status };
     } catch (error) {
+        // Catch network errors or other types of issues
         return { url, status: error.response ? error.response.status : 'Network Error' };
     }
 }
@@ -77,53 +91,58 @@ async function processSitemap(sitemapUrl) {
 
     const results = [];
     let successCount = 0;
+    let redirectCount = 0;
     let errorCount = 0;
 
     for (const url of sitemapUrls) {
-        const { url: checkedUrl, status } = await checkUrlStatus(url);
-        if (status === 200) successCount++;
-        else errorCount++;
-        results.push({ url: checkedUrl, status });
-        console.log(`Checked ${checkedUrl}: ${status}`);
+        const result = await checkUrlStatus(url);
+        if (result.status === 200) {
+            successCount++;
+        } else if (result.status === 301 || result.status === 302) {
+            redirectCount++;
+            console.log(`Redirect detected: ${result.url} -> ${result.redirectUrl}`);
+        } else {
+            errorCount++;
+        }
+
+        // Include the original and redirect URL if applicable
+        results.push({
+            url: result.url,
+            status: result.status,
+            redirectUrl: result.redirectUrl || ''
+        });
     }
 
     const csvContent = results
-        .map((result) => `${result.url},${result.status}`)
+        .map((result) => `${result.url},${result.status},${result.redirectUrl}`)
         .join('\n');
     const totalUrls = results.length;
-    const summary = `Total URLs Checked:,${totalUrls}\nSuccessful:,${successCount}\nErrors:,${errorCount}`;
+    const summary = `Total URLs Checked:,${totalUrls}\nSuccessful:,${successCount}\nRedirects:,${redirectCount}\nErrors:,${errorCount}`;
     const filename = generateFilename(sitemapUrl, path.basename(sitemapUrl, '.xml'));
 
-    fs.writeFileSync(filename, `URL,Status\n${csvContent}\n${summary}`);
+    fs.writeFileSync(filename, `URL,Status,Redirect URL\n${csvContent}\n${summary}`);
     console.log(`Results saved to ${filename}`);
 
-    return { totalUrls, successCount, errorCount };
+    return { totalUrls, successCount, redirectCount, errorCount };
 }
 
 async function main() {
-    const xmlContent = await fetchXml(sitemapUrl);
-    const { type, urls } = await getSitemapsOrUrls(xmlContent);
-
     let totalUrls = 0;
     let successCount = 0;
+    let redirectCount = 0;
     let errorCount = 0;
 
-    if (type === 'index') {
-        for (const sitemapUrl of urls) {
-            console.log(`Processing sitemap: ${sitemapUrl}`);
-            const result = await processSitemap(sitemapUrl);
-            totalUrls += result.totalUrls;
-            successCount += result.successCount;
-            errorCount += result.errorCount;
-        }
-    } else if (type === 'sitemap') {
+    // Loop through all sitemaps in the config file
+    for (const sitemapUrl of sitemapUrls) {
+        console.log(`Processing sitemap: ${sitemapUrl}`);
         const result = await processSitemap(sitemapUrl);
-        totalUrls = result.totalUrls;
-        successCount = result.successCount;
-        errorCount = result.errorCount;
+        totalUrls += result.totalUrls;
+        successCount += result.successCount;
+        redirectCount += result.redirectCount;
+        errorCount += result.errorCount;
     }
 
-    console.log(`Summary: Verified ${totalUrls} URLs, ${successCount} have 200 status code, ${errorCount} have errors.`);
+    console.log(`Summary: Verified ${totalUrls} URLs, ${successCount} have 200 status code, ${redirectCount} are redirects, ${errorCount} have errors.`);
 }
 
 main();
