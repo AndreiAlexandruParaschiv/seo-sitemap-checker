@@ -1,7 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const xml2js = require('xml2js');
-const { sitemapUrls } = require('./config'); // Importing multiple sitemap URLs
+const { sitemapUrls } = require('./config'); // import multiple sitemap
 const path = require('path');
 
 async function fetchXml(url) {
@@ -51,13 +51,14 @@ async function checkUrlStatus(url) {
 
         // Handle 3xx redirects
         if (response.status === 301 || response.status === 302) {
+            console.log(`Redirect detected: ${url} -> ${response.headers.location}`);
             return {
                 url,
                 status: response.status,
                 redirectUrl: response.headers.location
             };
         }
-
+        console.log(`Success: ${url} -> ${response.status}`);
         return { url, status: response.status };
     } catch (error) {
         // Catch network errors or other types of issues
