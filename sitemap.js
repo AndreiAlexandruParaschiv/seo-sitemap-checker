@@ -45,8 +45,8 @@ async function getSitemapsOrUrls(xmlContent) {
 async function checkUrlStatus(url) {
     try {
         const response = await axios.get(url, {
-            maxRedirects: 0, // Prevent following redirects
-            validateStatus: (status) => status < 400 // Accept 3xx status codes as valid
+            maxRedirects: 0, // prevent following redirects
+            validateStatus: (status) => status < 400 // accept 3xx status codes as valid
         });
 
         // Handle 3xx redirects
