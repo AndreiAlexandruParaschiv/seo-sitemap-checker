@@ -1,7 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const xml2js = require('xml2js');
-const { sitemapUrls } = require('./config'); // import multiple sitemap
+const { sitemapUrls } = require('./config'); // import multiple sitemaps
 const path = require('path');
 
 async function fetchXml(url) {
@@ -46,7 +46,7 @@ async function checkUrlStatus(url) {
     try {
         const response = await axios.get(url, {
             maxRedirects: 0, // prevent following redirects
-            validateStatus: (status) => status < 400 // accept 3xx status codes as valid
+            validateStatus: (status) => status < 400 // accept 3xx to capture redirects
         });
 
         // Handle 3xx redirects
@@ -66,9 +66,25 @@ async function checkUrlStatus(url) {
     }
 }
 
-function generateFilename(baseName, directory) {
+// Helper function to format the sitemap name from its URL
+function getFormattedSitemapName(sitemapUrl) {
+    const urlObj = new URL(sitemapUrl);
+    let pathname = urlObj.pathname; // e.g., '/resources/hr-glossary/sitemap.xml'
+    // Remove the leading slash if present
+    if (pathname.startsWith('/')) {
+        pathname = pathname.substring(1);
+    }
+    // Remove the '.xml' extension if present
+    if (pathname.endsWith('.xml')) {
+        pathname = pathname.slice(0, -4);
+    }
+    // Replace any remaining '/' with '-' to create a filename-friendly string
+    return pathname.replace(/\//g, '-');
+}
+
+function generateFilename(baseUrl, sitemapName) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const parsedUrl = new URL(baseName);
+    const parsedUrl = new URL(baseUrl);
     const domainName = parsedUrl.hostname.replace(/\./g, '_');
     const resultsDir = path.join(__dirname, 'results');
     const dirPath = path.join(resultsDir, domainName);
@@ -83,7 +99,7 @@ function generateFilename(baseName, directory) {
         fs.mkdirSync(dirPath);
     }
 
-    return path.join(dirPath, `${directory}_${timestamp}.csv`);
+    return path.join(dirPath, `${sitemapName}_${timestamp}.csv`);
 }
 
 async function processSitemap(sitemapUrl) {
@@ -97,9 +113,11 @@ async function processSitemap(sitemapUrl) {
 
     for (const url of sitemapUrls) {
         const result = await checkUrlStatus(url);
+        // Only status 200 is considered "ok"
         if (result.status === 200) {
             successCount++;
         } else if (result.status === 301 || result.status === 302) {
+            // Redirects are treated as "not ok"
             redirectCount++;
             console.log(`Redirect detected: ${result.url} -> ${result.redirectUrl}`);
         } else {
@@ -114,12 +132,28 @@ async function processSitemap(sitemapUrl) {
         });
     }
 
+    // Prepare CSV rows
     const csvContent = results
         .map((result) => `${result.url},${result.status},${result.redirectUrl}`)
         .join('\n');
+
     const totalUrls = results.length;
-    const summary = `Total URLs Checked:,${totalUrls}\nSuccessful:,${successCount}\nRedirects:,${redirectCount}\nErrors:,${errorCount}`;
-    const filename = generateFilename(sitemapUrl, path.basename(sitemapUrl, '.xml'));
+    // Calculate percentages where only status code 200 counts as ok
+    const percentOk = ((successCount / totalUrls) * 100).toFixed(2);
+    const percentNotOk = (((redirectCount + errorCount) / totalUrls) * 100).toFixed(2);
+
+    // Build the summary with counts and percentages
+    const summary = [
+        `Total URLs Checked:,${totalUrls}`,
+        `Successful (200):,${successCount} (${percentOk}%)`,
+        `Redirects (as Not OK):,${redirectCount}`,
+        `Errors:,${errorCount}`,
+        `Not OK Percentage:,${percentNotOk}%`
+    ].join('\n');
+
+    // Use the formatted sitemap name for the filename
+    const sitemapName = getFormattedSitemapName(sitemapUrl);
+    const filename = generateFilename(sitemapUrl, sitemapName);
 
     fs.writeFileSync(filename, `URL,Status,Redirect URL\n${csvContent}\n${summary}`);
     console.log(`Results saved to ${filename}`);
@@ -133,7 +167,7 @@ async function main() {
     let redirectCount = 0;
     let errorCount = 0;
 
-    // Loop through all sitemaps in the config file
+    // Process each sitemap from the config
     for (const sitemapUrl of sitemapUrls) {
         console.log(`Processing sitemap: ${sitemapUrl}`);
         const result = await processSitemap(sitemapUrl);
@@ -143,7 +177,12 @@ async function main() {
         errorCount += result.errorCount;
     }
 
-    console.log(`Summary: Verified ${totalUrls} URLs, ${successCount} have 200 status code, ${redirectCount} are redirects, ${errorCount} have errors.`);
+    // Calculate overall percentages
+    const overallPercentOk = ((successCount / totalUrls) * 100).toFixed(2);
+    const overallPercentNonOk = (((redirectCount + errorCount) / totalUrls) * 100).toFixed(2);
+
+    console.log(`\nSummary: Verified ${totalUrls} URLs, ${successCount} returned 200, ${redirectCount} were redirects, and ${errorCount} had errors.`);
+    console.log(`Overall: OK ${overallPercentOk}%, Non-OK ${overallPercentNonOk}%`);
 }
 
 main();
