@@ -7,19 +7,20 @@ Return a csv file with each URL's status and count the number of URLs checked.
 
 ## How to use
 1. Clone the repository
-2. Install the dependencies
+2. Use node version > v20.0
+3. Install the dependencies
 ```bash
 npm install
 ```
-3. Run the script for checking the sitemap
+4. Run the script for checking the sitemap
 ```bash
 node sitemap.js
 ```
-4. Run the script for checking the sitemap index
+5. Run the script for checking the sitemap index
 ```bash
-node checkmeta.js
+node sitemapindex.js
 ```
-5. Check the output file in the output folder
+6. Check the `results` folder for the _**sitemap.js**_ file and `resultsmeta` folder for the _**sitemapindex.js**_ file
 
 ## Config file
 The config file is located in the root folder, name `config.js` and `metaconfig.js`

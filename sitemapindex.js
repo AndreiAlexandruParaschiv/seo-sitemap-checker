@@ -73,6 +73,22 @@ function checkMetaTags(html, url) {
     return result;
 }
 
+// Helper function to format the sitemap name from its URL
+function getFormattedSitemapName(sitemapUrl) {
+    const urlObj = new URL(sitemapUrl);
+    let pathname = urlObj.pathname;
+    // Remove the leading slash if present
+    if (pathname.startsWith('/')) {
+        pathname = pathname.substring(1);
+    }
+    // Remove the '.xml' extension if present
+    if (pathname.endsWith('.xml')) {
+        pathname = pathname.slice(0, -4);
+    }
+    // Replace any remaining '/' with '-' to create a filename-friendly string
+    return pathname.replace(/\//g, '-');
+}
+
 // Function to create the results directory without a timestamp (based on domain)
 function createResultsDirectory(sitemapUrl) {
     const resultsDir = path.join(__dirname, 'resultsmeta'); // Base results directory
@@ -98,15 +114,23 @@ function createResultsDirectory(sitemapUrl) {
 // Function to save results and statistics to a CSV file (with timestamp in filename)
 function saveResultsToCsv(results, sitemapUrl, okCount, notOkCount, totalUrls, resultsDir) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `meta_results_${path.basename(sitemapUrl, '.xml')}_${timestamp}.csv`;
+    // Use the formatted sitemap name instead of the basename only
+    const formattedName = getFormattedSitemapName(sitemapUrl);
+    const filename = `meta_results_${formattedName}_${timestamp}.csv`;
     const filePath = path.join(resultsDir, filename);
 
     const csvContent = results.map((result) =>
         `${result.url},${result.noIndex},${result.noFollow},${result.status}`
     ).join('\n');
 
+    // Calculate percentages
+    const okPercentage = ((okCount / totalUrls) * 100).toFixed(2);
+    const notOkPercentage = ((notOkCount / totalUrls) * 100).toFixed(2);
+
     // Adding summary at the end of the CSV file
-    const summary = `\nTotal URLs Checked,${totalUrls}\nTotal OK URLs,${okCount}\nTotal Not OK URLs,${notOkCount}`;
+    const summary = `\nTotal URLs Checked,${totalUrls}` +
+        `\nTotal OK URLs,${okCount} (${okPercentage}%)` +
+        `\nTotal Not OK URLs,${notOkCount} (${notOkPercentage}%)`;
 
     fs.writeFileSync(filePath, `URL,NoIndex,NoFollow,Status\n${csvContent}${summary}`, 'utf-8');
     console.log(`Results saved to ${filePath}`);
@@ -142,10 +166,14 @@ async function processSitemap(sitemapUrl) {
     // Save the results to CSV with statistics
     saveResultsToCsv(results, sitemapUrl, okCount, notOkCount, urls.length, resultsDir);
 
+    // Calculate percentages for console output
+    const okPercentage = ((okCount / urls.length) * 100).toFixed(2);
+    const notOkPercentage = ((notOkCount / urls.length) * 100).toFixed(2);
+
     // Display statistics
     console.log(`Total URLs Checked: ${urls.length}`);
-    console.log(`Total OK URLs: ${okCount}`);
-    console.log(`Total Not OK URLs: ${notOkCount}`);
+    console.log(`Total OK URLs: ${okCount} (${okPercentage}%)`);
+    console.log(`Total Not OK URLs: ${notOkCount} (${notOkPercentage}%)`);
 }
 
 // Main function to loop through sitemaps and check each URL

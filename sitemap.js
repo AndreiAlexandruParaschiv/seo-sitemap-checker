@@ -104,7 +104,8 @@ function generateFilename(baseUrl, sitemapName) {
 
 async function processSitemap(sitemapUrl) {
     const sitemapXml = await fetchXml(sitemapUrl);
-    const sitemapUrls = (await getSitemapsOrUrls(sitemapXml)).urls;
+    const sitemapData = await getSitemapsOrUrls(sitemapXml);
+    const sitemapUrls = new Set(sitemapData.urls);
 
     const results = [];
     let successCount = 0;
@@ -113,36 +114,38 @@ async function processSitemap(sitemapUrl) {
 
     for (const url of sitemapUrls) {
         const result = await checkUrlStatus(url);
-        // Only status 200 is considered "ok"
-        if (result.status === 200) {
-            successCount++;
-        } else if (result.status === 301 || result.status === 302) {
-            // Redirects are treated as "not ok"
+        let redirectInSitemap = "No";
+
+        // Check if the redirect target is in the sitemap
+        if ((result.status === 301 || result.status === 302) && result.redirectUrl) {
             redirectCount++;
-            console.log(`Redirect detected: ${result.url} -> ${result.redirectUrl}`);
+            if (sitemapUrls.has(result.redirectUrl)) {
+                redirectInSitemap = "Yes"; // Mark as "Yes" if the redirect target is found in the sitemap
+            }
+            console.log(`Redirect detected: ${result.url} -> ${result.redirectUrl}, In Sitemap: ${redirectInSitemap}`);
+        } else if (result.status === 200) {
+            successCount++;
         } else {
             errorCount++;
         }
 
-        // Include the original and redirect URL if applicable
         results.push({
             url: result.url,
             status: result.status,
-            redirectUrl: result.redirectUrl || ''
+            redirectUrl: result.redirectUrl || '',
+            redirectInSitemap
         });
     }
 
     // Prepare CSV rows
     const csvContent = results
-        .map((result) => `${result.url},${result.status},${result.redirectUrl}`)
+        .map((result) => `${result.url},${result.status},${result.redirectUrl},${result.redirectInSitemap}`)
         .join('\n');
 
     const totalUrls = results.length;
-    // Calculate percentages where only status code 200 counts as ok
     const percentOk = ((successCount / totalUrls) * 100).toFixed(2);
     const percentNotOk = (((redirectCount + errorCount) / totalUrls) * 100).toFixed(2);
 
-    // Build the summary with counts and percentages
     const summary = [
         `Total URLs Checked:,${totalUrls}`,
         `Successful (200):,${successCount} (${percentOk}%)`,
@@ -151,11 +154,11 @@ async function processSitemap(sitemapUrl) {
         `Not OK Percentage:,${percentNotOk}%`
     ].join('\n');
 
-    // Use the formatted sitemap name for the filename
     const sitemapName = getFormattedSitemapName(sitemapUrl);
     const filename = generateFilename(sitemapUrl, sitemapName);
 
-    fs.writeFileSync(filename, `URL,Status,Redirect URL\n${csvContent}\n${summary}`);
+    // Include the new column in CSV
+    fs.writeFileSync(filename, `URL,Status,Redirect URL,Redirect in Sitemap\n${csvContent}\n${summary}`);
     console.log(`Results saved to ${filename}`);
 
     return { totalUrls, successCount, redirectCount, errorCount };
