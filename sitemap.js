@@ -51,7 +51,6 @@ async function checkUrlStatus(url) {
 
         // Handle 3xx redirects
         if (response.status === 301 || response.status === 302) {
-            console.log(`Redirect detected: ${url} -> ${response.headers.location}`);
             return {
                 url,
                 status: response.status,
@@ -114,13 +113,13 @@ async function processSitemap(sitemapUrl) {
 
     for (const url of sitemapUrls) {
         const result = await checkUrlStatus(url);
-        let redirectInSitemap = "No";
+        let redirectInSitemap = 'No';
 
         // Check if the redirect target is in the sitemap
         if ((result.status === 301 || result.status === 302) && result.redirectUrl) {
             redirectCount++;
             if (sitemapUrls.has(result.redirectUrl)) {
-                redirectInSitemap = "Yes"; // Mark as "Yes" if the redirect target is found in the sitemap
+                redirectInSitemap = 'Yes'; // Mark as "Yes" if the redirect target is found in the sitemap
             }
             console.log(`Redirect detected: ${result.url} -> ${result.redirectUrl}, In Sitemap: ${redirectInSitemap}`);
         } else if (result.status === 200) {
