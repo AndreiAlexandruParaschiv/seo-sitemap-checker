@@ -118,11 +118,20 @@ async function processSitemap(sitemapUrl) {
         // Check if the redirect target is in the sitemap
         if ((result.status === 301 || result.status === 302) && result.redirectUrl) {
             redirectCount++;
-            if (sitemapUrls.has(result.redirectUrl)) {
-                redirectInSitemap = 'Yes'; // Mark as "Yes" if the redirect target is found in the sitemap
+
+            // Normalize URLs before comparison
+            const normalizedRedirectUrl = new URL(result.redirectUrl, sitemapUrl).pathname;
+
+            const isRedirectInSitemap = [...sitemapUrls].some(sitemapEntry => {
+                return new URL(sitemapEntry, sitemapUrl).pathname === normalizedRedirectUrl;
+            });
+
+            if (isRedirectInSitemap) {
+                redirectInSitemap = 'Yes';
             }
+
             console.log(`Redirect detected: ${result.url} -> ${result.redirectUrl}, In Sitemap: ${redirectInSitemap}`);
-        } else if (result.status === 200) {
+    } else if (result.status === 200) {
             successCount++;
         } else {
             errorCount++;
