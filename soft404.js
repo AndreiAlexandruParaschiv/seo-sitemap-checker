@@ -91,7 +91,7 @@ async function parseXml(xml) {
 }
 
 // Function to extract URLs from sitemap or sitemap index
-async function getSitemapsOrUrls(content, sitemapUrl) {
+async function getSitemapsOrUrls(content) {
   // First try to parse as XML
   const parsedXml = await parseXml(content);
 
