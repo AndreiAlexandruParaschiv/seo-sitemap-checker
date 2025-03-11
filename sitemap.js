@@ -298,31 +298,13 @@ async function processSitemap(sitemapUrl) {
   ].join('\n');
 
   const filename = generateFilename(sitemapUrl);
-  let redundantFilename = ''; // Initialize the variable at the function scope level
 
-  // Include the new column in CSV
+  // Include the columns in CSV
   fs.writeFileSync(
     filename,
     `URL,Status,Redirect URL,Redirect in Sitemap,Redundant URL\n${csvContent}\n${summary}`
   );
   console.log(`Results saved to ${filename}`);
-
-  // If there are redundant URLs, create a separate report
-  if (redundantUrls.length > 0) {
-    redundantFilename = generateFilename(sitemapUrl, 'redundant_urls');
-    const redundantContent = redundantUrls
-      .map(
-        (result) =>
-          `${result.url},${result.status},${result.redirectUrl},${result.targetUrl},Remove from sitemap`
-      )
-      .join('\n');
-
-    fs.writeFileSync(
-      redundantFilename,
-      `URL,Status,Redirects To,Target URL in Sitemap,Suggested Fix\n${redundantContent}`
-    );
-    console.log(`Redundant URLs report saved to ${redundantFilename}`);
-  }
 
   // Display summary
   console.log(`\n========== Summary for sitemap: ${sitemapUrl} ==========`);
@@ -333,9 +315,6 @@ async function processSitemap(sitemapUrl) {
   console.log(`Redundant URLs: ${redundantCount} (${percentRedundant}%)`);
   console.log(`Not OK Percentage: ${percentNotOk}%`);
   console.log(`Results saved to: ${filename}`);
-  if (redundantUrls.length > 0) {
-    console.log(`Redundant URLs report saved to: ${redundantFilename}`);
-  }
   console.log();
 
   return {

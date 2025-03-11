@@ -63,12 +63,12 @@ The sitemap.js script verifies the HTTP status of all URLs in your sitemap, help
 1. **Successful Pages (200)**: Confirms pages that are properly accessible
 2. **Redirects (301/302)**: Identifies pages that redirect to other locations
 3. **Errors (4xx/5xx)**: Detects broken links and server errors
-4. **Redundant URLs**: Identifies and groups URLs that redirect to pages already in the sitemap
+4. **Redundant URLs**: Identifies URLs that redirect to pages already in the sitemap
 
 The script also provides additional insights:
 
 - Identifies whether redirect targets are also in the sitemap (potentially duplicate content)
-- Creates a separate report for redundant URLs with suggestions to remove them
+- Flags redundant URLs in the report with "Yes" in the "Redundant URL" column
 - Handles both regular sitemaps and sitemap index files
 - Organizes results by domain for easy analysis
 - Provides detailed statistics on the percentage of successful vs problematic URLs
