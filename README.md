@@ -1,4 +1,5 @@
 # SEO Sitemap Checker
+
 This tool provides a comprehensive suite of scripts for checking various SEO aspects of websites using their sitemaps. It handles regular sitemaps (sitemap with URLs) and index sitemaps (sitemap of sitemaps).
 
 ## Features
@@ -62,15 +63,17 @@ The sitemap.js script verifies the HTTP status of all URLs in your sitemap, help
 1. **Successful Pages (200)**: Confirms pages that are properly accessible
 2. **Redirects (301/302)**: Identifies pages that redirect to other locations
 3. **Errors (4xx/5xx)**: Detects broken links and server errors
+4. **Redundant URLs**: Identifies and groups URLs that redirect to pages already in the sitemap
 
 The script also provides additional insights:
 
 - Identifies whether redirect targets are also in the sitemap (potentially duplicate content)
+- Creates a separate report for redundant URLs with suggestions to remove them
 - Handles both regular sitemaps and sitemap index files
 - Organizes results by domain for easy analysis
 - Provides detailed statistics on the percentage of successful vs problematic URLs
 
-This helps ensure your sitemap accurately represents your site structure and doesn't contain broken or redirecting URLs that waste crawl budget.
+This helps ensure your sitemap accurately represents your site structure and doesn't contain broken or redirecting URLs that waste crawl budget. The redundant URL detection is particularly valuable for eliminating duplicate content issues and improving crawl efficiency.
 
 ## Meta Robots Checking
 

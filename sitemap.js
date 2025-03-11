@@ -129,15 +129,31 @@ function createResultsDirectory(sitemapUrl) {
 }
 
 // Function to generate a filename for the results
-function generateFilename(sitemapUrl) {
+function generateFilename(sitemapUrl, fileType = 'results') {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const sitemapName = getFormattedSitemapName(sitemapUrl);
   const resultsDir = createResultsDirectory(sitemapUrl);
 
   return path.join(
     resultsDir,
-    `sitemap_results_${sitemapName}_${timestamp}.csv`
+    `sitemap_${fileType}_${sitemapName}_${timestamp}.csv`
   );
+}
+
+// Function to normalize a URL for comparison
+function normalizeUrl(url, baseUrl) {
+  try {
+    const fullUrl = new URL(url, baseUrl);
+    // Remove trailing slash for consistent comparison
+    let normalizedPath = fullUrl.pathname;
+    if (normalizedPath.endsWith('/') && normalizedPath.length > 1) {
+      normalizedPath = normalizedPath.slice(0, -1);
+    }
+    return `${fullUrl.origin}${normalizedPath}`;
+  } catch (error) {
+    console.error(`Error normalizing URL ${url}: ${error.message}`);
+    return url;
+  }
 }
 
 // Function to process a single sitemap
@@ -168,6 +184,7 @@ async function processSitemap(sitemapUrl) {
       successCount: 0,
       redirectCount: 0,
       errorCount: 0,
+      redundantCount: 0,
     };
 
     for (const childSitemapUrl of sitemapData.urls) {
@@ -177,6 +194,7 @@ async function processSitemap(sitemapUrl) {
         totalResults.successCount += result.successCount;
         totalResults.redirectCount += result.redirectCount;
         totalResults.errorCount += result.errorCount;
+        totalResults.redundantCount += result.redundantCount || 0;
       }
     }
 
@@ -190,6 +208,13 @@ async function processSitemap(sitemapUrl) {
   let successCount = 0;
   let redirectCount = 0;
   let errorCount = 0;
+  let redundantCount = 0;
+
+  // Create a map of normalized URLs for easier comparison
+  const normalizedUrlMap = new Map();
+  urls.forEach((url) => {
+    normalizedUrlMap.set(normalizeUrl(url, sitemapUrl), url);
+  });
 
   // Process each URL in the sitemap
   for (let i = 0; i < urls.length; i++) {
@@ -198,6 +223,8 @@ async function processSitemap(sitemapUrl) {
 
     const result = await checkUrlStatus(url);
     let redirectInSitemap = 'No';
+    let redundantUrl = false;
+    let targetUrl = '';
 
     // Check if the redirect target is in the sitemap
     if (
@@ -205,22 +232,25 @@ async function processSitemap(sitemapUrl) {
       result.redirectUrl
     ) {
       redirectCount++;
+      const normalizedRedirectUrl = normalizeUrl(result.redirectUrl, url);
 
-      // Normalize URLs before comparison
-      const normalizedRedirectUrl = new URL(result.redirectUrl, sitemapUrl)
-        .pathname;
-
-      const isRedirectInSitemap = urls.some((sitemapEntry) => {
-        return (
-          new URL(sitemapEntry, sitemapUrl).pathname === normalizedRedirectUrl
-        );
-      });
-
-      if (isRedirectInSitemap) {
-        redirectInSitemap = 'Yes';
+      // Check if the redirect target is in the sitemap
+      for (const [normalizedUrl, originalUrl] of normalizedUrlMap.entries()) {
+        if (normalizedUrl === normalizedRedirectUrl) {
+          redirectInSitemap = 'Yes';
+          redundantUrl = true;
+          targetUrl = originalUrl;
+          redundantCount++;
+          break;
+        }
       }
 
       console.log(`  ➤ Redirect target in sitemap: ${redirectInSitemap}`);
+      if (redundantUrl) {
+        console.log(
+          `  ➤ REDUNDANT URL: Should be removed from sitemap (redirects to ${targetUrl})`
+        );
+      }
     } else if (result.status === 200) {
       successCount++;
     } else {
@@ -232,14 +262,21 @@ async function processSitemap(sitemapUrl) {
       status: result.status,
       redirectUrl: result.redirectUrl || '',
       redirectInSitemap,
+      redundantUrl,
+      targetUrl,
     });
   }
+
+  // Group redundant URLs (URLs that redirect to other pages in the sitemap)
+  const redundantUrls = results.filter((result) => result.redundantUrl);
 
   // Prepare CSV rows
   const csvContent = results
     .map(
       (result) =>
-        `${result.url},${result.status},${result.redirectUrl},${result.redirectInSitemap}`
+        `${result.url},${result.status},${result.redirectUrl},${
+          result.redirectInSitemap
+        },${result.redundantUrl ? 'Yes' : 'No'}`
     )
     .join('\n');
 
@@ -249,23 +286,43 @@ async function processSitemap(sitemapUrl) {
     ((redirectCount + errorCount) / totalUrls) *
     100
   ).toFixed(2);
+  const percentRedundant = ((redundantCount / totalUrls) * 100).toFixed(2);
 
   const summary = [
     `Total URLs Checked:,${totalUrls}`,
     `Successful (200):,${successCount} (${percentOk}%)`,
     `Redirects:,${redirectCount}`,
     `Errors:,${errorCount}`,
+    `Redundant URLs:,${redundantCount} (${percentRedundant}%)`,
     `Not OK Percentage:,${percentNotOk}%`,
   ].join('\n');
 
   const filename = generateFilename(sitemapUrl);
+  let redundantFilename = ''; // Initialize the variable at the function scope level
 
   // Include the new column in CSV
   fs.writeFileSync(
     filename,
-    `URL,Status,Redirect URL,Redirect in Sitemap\n${csvContent}\n${summary}`
+    `URL,Status,Redirect URL,Redirect in Sitemap,Redundant URL\n${csvContent}\n${summary}`
   );
   console.log(`Results saved to ${filename}`);
+
+  // If there are redundant URLs, create a separate report
+  if (redundantUrls.length > 0) {
+    redundantFilename = generateFilename(sitemapUrl, 'redundant_urls');
+    const redundantContent = redundantUrls
+      .map(
+        (result) =>
+          `${result.url},${result.status},${result.redirectUrl},${result.targetUrl},Remove from sitemap`
+      )
+      .join('\n');
+
+    fs.writeFileSync(
+      redundantFilename,
+      `URL,Status,Redirects To,Target URL in Sitemap,Suggested Fix\n${redundantContent}`
+    );
+    console.log(`Redundant URLs report saved to ${redundantFilename}`);
+  }
 
   // Display summary
   console.log(`\n========== Summary for sitemap: ${sitemapUrl} ==========`);
@@ -273,10 +330,21 @@ async function processSitemap(sitemapUrl) {
   console.log(`Successful (200): ${successCount} (${percentOk}%)`);
   console.log(`Redirects: ${redirectCount}`);
   console.log(`Errors: ${errorCount}`);
+  console.log(`Redundant URLs: ${redundantCount} (${percentRedundant}%)`);
   console.log(`Not OK Percentage: ${percentNotOk}%`);
-  console.log(`Results saved to: ${filename}\n`);
+  console.log(`Results saved to: ${filename}`);
+  if (redundantUrls.length > 0) {
+    console.log(`Redundant URLs report saved to: ${redundantFilename}`);
+  }
+  console.log();
 
-  return { totalUrls, successCount, redirectCount, errorCount };
+  return {
+    totalUrls,
+    successCount,
+    redirectCount,
+    errorCount,
+    redundantCount,
+  };
 }
 
 // Main function
@@ -288,6 +356,7 @@ async function main() {
   let totalSuccessCount = 0;
   let totalRedirectCount = 0;
   let totalErrorCount = 0;
+  let totalRedundantCount = 0;
 
   for (const sitemapUrl of sitemapUrls) {
     const result = await processSitemap(sitemapUrl);
@@ -296,6 +365,7 @@ async function main() {
       totalSuccessCount += result.successCount;
       totalRedirectCount += result.redirectCount;
       totalErrorCount += result.errorCount;
+      totalRedundantCount += result.redundantCount || 0;
     }
   }
 
@@ -308,12 +378,19 @@ async function main() {
       ((totalRedirectCount + totalErrorCount) / totalUrls) *
       100
     ).toFixed(2);
+    const overallPercentRedundant = (
+      (totalRedundantCount / totalUrls) *
+      100
+    ).toFixed(2);
 
     console.log(
       `Successful (200): ${totalSuccessCount} (${overallPercentOk}%)`
     );
     console.log(`Redirects: ${totalRedirectCount}`);
     console.log(`Errors: ${totalErrorCount}`);
+    console.log(
+      `Redundant URLs: ${totalRedundantCount} (${overallPercentRedundant}%)`
+    );
     console.log(`Not OK Percentage: ${overallPercentNotOk}%`);
   } else {
     console.log(
