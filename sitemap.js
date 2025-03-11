@@ -1,7 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const xml2js = require('xml2js');
-const { sitemapUrls } = require('./config'); // import multiple sitemaps
+const { sitemapUrls } = require('./sitemapconfig'); // import multiple sitemaps
 const path = require('path');
 
 async function fetchXml(url) {

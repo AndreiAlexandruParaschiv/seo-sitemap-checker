@@ -18,10 +18,10 @@ node sitemap.js
 ```
 5. Run the script for checking the sitemap index
 ```bash
-node sitemapindex.js
+node noindex.js
 ```
-6. Check the `results` folder for the _**sitemap.js**_ file and `resultsmeta` folder for the _**sitemapindex.js**_ file
+6. Check the `results` folder for the _**sitemap.js**_ file and `resultsmeta` folder for the _**noindex.js**_ file
 
 ## Config file
-The config file is located in the root folder, name `config.js` and `metaconfig.js`
+The config file is located in the root folder, name `sitemapconfig.js` and `noindexconfig.js`
 You can change the sitemap URLs in this file .

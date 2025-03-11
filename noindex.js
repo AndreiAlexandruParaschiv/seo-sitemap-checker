@@ -3,7 +3,7 @@ const xml2js = require('xml2js');
 const cheerio = require('cheerio'); // For parsing HTML
 const fs = require('fs');
 const path = require('path');
-const { sitemapUrls } = require('./metaconfig'); // Import sitemap URLs from config
+const { sitemapUrls } = require('./noindexconfig'); // Import sitemap URLs from config
 
 // Function to fetch XML from a given URL
 async function fetchXml(url) {
@@ -138,7 +138,7 @@ function saveResultsToCsv(results, sitemapUrl, okCount, notOkCount, totalUrls, r
 
 // Function to process the sitemap, check meta tags, and save results with statistics
 async function processSitemap(sitemapUrl) {
-    console.log(`Processing sitemap: ${sitemapUrl}`);
+    console.log(`\nProcessing sitemap: ${sitemapUrl}\n`);
 
     const sitemapXml = await fetchXml(sitemapUrl);
     const urls = await getSitemapUrls(sitemapXml);
@@ -155,6 +155,13 @@ async function processSitemap(sitemapUrl) {
         if (pageContent) {
             const result = checkMetaTags(pageContent, url);
             results.push(result);
+
+            // Log the result for each URL
+            console.log(`URL: ${url}`);
+            console.log(`  ➤ NoIndex: ${result.noIndex}`);
+            console.log(`  ➤ NoFollow: ${result.noFollow}`);
+            console.log(`  ➤ Status: ${result.status}\n`);
+
             if (result.status === 'OK') {
                 okCount++;
             } else {
@@ -171,10 +178,12 @@ async function processSitemap(sitemapUrl) {
     const notOkPercentage = ((notOkCount / urls.length) * 100).toFixed(2);
 
     // Display statistics
+    console.log(`\nSummary for sitemap: ${sitemapUrl}`);
     console.log(`Total URLs Checked: ${urls.length}`);
     console.log(`Total OK URLs: ${okCount} (${okPercentage}%)`);
-    console.log(`Total Not OK URLs: ${notOkCount} (${notOkPercentage}%)`);
+    console.log(`Total Not OK URLs: ${notOkCount} (${notOkPercentage}%)\n`);
 }
+
 
 // Main function to loop through sitemaps and check each URL
 async function main() {
