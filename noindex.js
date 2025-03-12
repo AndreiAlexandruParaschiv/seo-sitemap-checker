@@ -165,14 +165,17 @@ async function processSitemap(sitemapUrl) {
   // Create the results directory for the current website (without timestamp)
   const resultsDir = createResultsDirectory(sitemapUrl);
 
-  for (const url of urls) {
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
     const pageContent = await fetchPageContent(url);
     if (pageContent) {
       const result = checkMetaTags(pageContent, url);
       results.push(result);
 
-      // Log the result for each URL
-      console.log(`URL: ${url}`);
+      // Log the result for each URL with progress indicator
+      console.log(
+        `URL [${(i + 1).toString().padStart(2, '0')}/${urls.length}]: ${url}`
+      );
       console.log(`  ➤ NoIndex: ${result.noIndex}`);
       console.log(`  ➤ NoFollow: ${result.noFollow}`);
       console.log(`  ➤ Status: ${result.status}\n`);

@@ -7,6 +7,7 @@ This tool provides a comprehensive suite of scripts for checking various SEO asp
 - **URL Status Checking** (sitemap.js): Verifies all URLs in a sitemap, detecting 200 OK responses, redirects, and errors
 - **Meta Robots Checking** (noindex.js): Detects pages with noindex/nofollow meta tags that shouldn't be in sitemaps
 - **Soft 404 Detection** (soft404.js): Identifies pages that return 200 OK but are actually "soft 404" error pages
+- **URL Rechecking** (recheck_urls.js): Rechecks URLs from a previous report to verify if issues have been fixed
 
 Each script generates detailed CSV reports with comprehensive statistics.
 
@@ -32,10 +33,13 @@ node noindex.js
 
 # Detect soft 404 pages
 node soft404.js
+
+# Recheck URLs from a previous report
+node recheck_urls.js path/to/report.csv
 ```
 
 6. Check the results folders:
-   - `results` folder for sitemap.js reports
+   - `results` folder for sitemap.js and recheck_urls.js reports
    - `resultsmeta` folder for noindex.js reports
    - `resultssoft404` folder for soft404.js reports
 
@@ -101,3 +105,25 @@ The soft404.js script detects pages that return a 200 OK status but are actually
 3. Avoids false positives by recognizing legitimate pages based on URL patterns and interactive elements
 
 The script generates detailed reports showing which pages are likely soft 404s and what indicators were found.
+
+## URL Rechecking
+
+The recheck_urls.js script allows you to recheck URLs from a previous report to verify if issues have been fixed:
+
+1. **Targeted Rechecking**: Focuses only on URLs from a specific report rather than the entire sitemap
+2. **Status Verification**: Checks if previously identified issues (redirects, errors, etc.) have been resolved
+3. **Redundancy Detection**: Continues to identify redundant URLs within the list being checked
+
+To use this script:
+
+```bash
+node recheck_urls.js path/to/report.csv
+```
+
+The script reads the URLs from the first column of the CSV file and generates a new report with current status information. This is particularly useful for:
+
+- Verifying fixes after making changes to your website
+- Monitoring specific problematic URLs over time
+- Focusing on a subset of URLs from a larger sitemap
+
+The report follows the same format as the sitemap.js output, making it easy to compare results before and after changes.

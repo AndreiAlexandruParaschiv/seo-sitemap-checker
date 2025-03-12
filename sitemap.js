@@ -219,7 +219,11 @@ async function processSitemap(sitemapUrl) {
   // Process each URL in the sitemap
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
-    console.log(`[${i + 1}/${urls.length}] Checking URL: ${url}`);
+    console.log(
+      `[${(i + 1).toString().padStart(2, '0')}/${
+        urls.length
+      }] Checking URL: ${url}`
+    );
 
     const result = await checkUrlStatus(url);
     let redirectInSitemap = 'No';
