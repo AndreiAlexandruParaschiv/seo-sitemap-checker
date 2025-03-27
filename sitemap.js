@@ -1,14 +1,31 @@
 const axios = require('axios');
 const fs = require('fs');
 const xml2js = require('xml2js');
-const { sitemapUrls } = require('./sitemapconfig'); // import multiple sitemaps
+const { sitemapUrls, sitemaps } = require('./sitemapconfig'); // import multiple sitemaps
 const path = require('path');
+
+// Function to check if a URL is from wilson.com
+function isWilsonUrl(url) {
+  return url.includes('wilson.com');
+}
 
 // Function to fetch XML from a given URL
 async function fetchXml(url) {
   try {
     console.log(`Fetching XML from ${url}...`);
-    const response = await axios.get(url);
+
+    // Configure request options
+    const requestOptions = {};
+
+    // Add special header for Wilson.com
+    if (isWilsonUrl(url)) {
+      console.log('Adding special header for Wilson.com request');
+      requestOptions.headers = {
+        eds_process: 'h9E9Fvp#kvbpq93m',
+      };
+    }
+
+    const response = await axios.get(url, requestOptions);
     console.log(`Successfully fetched XML from ${url}`);
     return response.data;
   } catch (error) {
@@ -60,11 +77,22 @@ async function getSitemapsOrUrls(xmlContent) {
 async function checkUrlStatus(url) {
   try {
     console.log(`Checking URL: ${url}`);
-    const response = await axios.get(url, {
+
+    // Configure request options
+    const requestOptions = {
       maxRedirects: 0, // prevent following redirects
       validateStatus: (status) => status < 400, // accept 3xx to capture redirects
       timeout: 15000, // 15 seconds timeout
-    });
+    };
+
+    // Add special header for Wilson.com
+    if (isWilsonUrl(url)) {
+      requestOptions.headers = {
+        eds_process: 'h9E9Fvp#kvbpq93m',
+      };
+    }
+
+    const response = await axios.get(url, requestOptions);
 
     // Handle 3xx redirects
     if (response.status === 301 || response.status === 302) {

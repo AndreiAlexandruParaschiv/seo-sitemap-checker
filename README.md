@@ -49,16 +49,42 @@ All scripts now use a single shared configuration file: `sitemapconfig.js`
 
 ```javascript
 // Shared configuration file for all SEO checking scripts
-const sitemapUrls = [
-  // Fill in the sitemaps you want to check
-  'https://example.com/sitemap.xml',
-  'https://example.com/sitemap-posts.xml',
+const sitemaps = [
+  // Fill in the sitemaps you want to check with their corresponding siteId
+  {
+    url: 'https://example.com/sitemap.xml',
+    siteId: '12345678-1234-1234-1234-123456789abc',
+  },
+  {
+    url: 'https://another-example.com/sitemap.xml',
+    siteId: '87654321-4321-4321-4321-cba987654321',
+  },
 ];
+
+// For backward compatibility
+const sitemapUrls = sitemaps.map((site) => site.url);
 
 module.exports = {
   sitemapUrls,
+  sitemaps,
 };
 ```
+
+The configuration now supports:
+
+- **Full sitemap URLs**: Always include the complete path to the sitemap XML file
+- **Site IDs**: Associate each sitemap with its corresponding site ID for opportunity generation
+- **Backward compatibility**: Maintains support for older scripts through the sitemapUrls array
+
+This enhanced configuration streamlines the workflow from scanning to opportunity creation, eliminating the need to manually specify site IDs when running the scripts.
+
+### Special Site Requirements
+
+Some sites require special HTTP headers for access:
+
+- **Wilson.com**: All requests to wilson.com automatically include a custom header `eds_process: h9E9Fvp#kvbpq93m` to authenticate requests.
+
+If you need to add additional special headers for other sites, you can modify the relevant request functions in each script.
 
 ## URL Status Checking
 
@@ -127,3 +153,132 @@ The script reads the URLs from the first column of the CSV file and generates a 
 - Focusing on a subset of URLs from a larger sitemap
 
 The report follows the same format as the sitemap.js output, making it easy to compare results before and after changes.
+
+## CSV to JSON Conversion
+
+The csv_to_json.js script converts CSV reports from any of the other scripts into a JSON format suitable for importing into other systems:
+
+1. **Selective Export**: Only includes URLs with specific status codes (301, 302, 404)
+2. **Structured Format**: Creates a standardized JSON with opportunity and suggestions fields
+3. **Sitemap Integration**: Uses the sitemap URL and site ID directly from your sitemapconfig.js file
+4. **Automatic Configuration**: Requires minimal parameters as it pulls information from the config file
+
+To use this script:
+
+```bash
+node csv_to_json.js path/to/report.csv [sitemapIndex]
+```
+
+Parameters:
+
+- `path/to/report.csv`: Path to the CSV report file
+- `sitemapIndex` (optional): Index of the sitemap in your sitemapconfig.js file (defaults to 0)
+
+The script creates a JSON file with the following structure:
+
+```json
+{
+  "opportunity": {
+    "sitemapUrl": "https://example.com/sitemap.xml",
+    "siteId": "12345678-1234-1234-1234-123456789abc"
+  },
+  "suggestions": [
+    {
+      "url": "https://example.com/old-page",
+      "status": "301",
+      "urlSuggested": "https://example.com/new-page"
+    },
+    {
+      "url": "https://example.com/not-found",
+      "status": "404",
+      "urlSuggested": ""
+    }
+  ]
+}
+```
+
+This format makes it easy to import the results into content management systems, redirect managers, or other SEO tools that expect an "opportunity" object and a "suggestions" array.
+
+## Opportunity File Updates
+
+The update_opportunity.js script allows you to update existing opportunity JSON files with new suggestions:
+
+1. **Metadata Preservation**: Maintains all original opportunity metadata (IDs, titles, etc.)
+2. **Suggestion Updates**: Replaces existing suggestions with new ones from a CSV-to-JSON conversion
+3. **ID Generation**: Creates new UUIDs for each suggestion while preserving the opportunity ID
+
+To use this script:
+
+```bash
+node update_opportunity.js path/to/opportunity.json path/to/suggestions.json
+```
+
+Parameters:
+
+- `path/to/opportunity.json`: Path to the existing opportunity file
+- `path/to/suggestions.json`: Path to the new suggestions file from csv_to_json.js
+
+The script creates a new JSON file with the original opportunity metadata and the updated suggestions. This is useful for:
+
+- Updating existing opportunities with fresh scan data
+- Preserving opportunity tracking information while refreshing the suggestions
+- Preparing files for import into opportunity management systems
+
+## Creating Opportunity Files From Scratch
+
+The create_opportunity.js script generates a complete opportunity JSON file from scratch with all required fields:
+
+1. **Auto-Generated Fields**: Creates new UUIDs for the opportunity and all suggestions
+2. **Default Values**: Uses predefined values for runbook, title, and status fields
+3. **Sitemap Integration**: Extracts the domain from the sitemap URL for filename creation
+4. **Site ID Lookup**: Automatically uses site IDs from sitemapconfig.js when available
+
+To use this script:
+
+```bash
+node create_opportunity.js path/to/suggestions.json [site-id]
+```
+
+Parameters:
+
+- `path/to/suggestions.json`: Path to the suggestions file from csv_to_json.js
+- `site-id` (optional): The site ID to use in the opportunity (if not provided, looks up in config)
+
+The script creates a new opportunity file in the following format:
+
+```json
+{
+  "opportunity": {
+    "id": "auto-generated-uuid",
+    "siteId": "provided-site-id",
+    "runbook": "default-runbook-url",
+    "type": "sitemap",
+    "origin": "ESS_OPS",
+    "title": "Sitemap issues found",
+    "status": "NEW",
+    "createdAt": "timestamp",
+    "updatedAt": "timestamp"
+  },
+  "suggestions": [
+    {
+      "id": "auto-generated-uuid",
+      "opportunityId": "same-as-opportunity-id",
+      "type": "REDIRECT_UPDATE",
+      "rank": 0,
+      "status": "NEW",
+      "data": {
+        "sitemapUrl": "from-suggestions-file",
+        "pageUrl": "url-with-issue",
+        "type": "url",
+        "error": null,
+        "urlsSuggested": "redirect-target",
+        "statusCode": 301
+      },
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    }
+  ]
+}
+```
+
+This streamlines the process of creating properly formatted opportunity files ready for import into your management system.

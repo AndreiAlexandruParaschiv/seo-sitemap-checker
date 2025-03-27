@@ -5,10 +5,26 @@ const fs = require('fs');
 const path = require('path');
 const { sitemapUrls } = require('./sitemapconfig'); // Import sitemap URLs from config
 
+// Function to check if a URL is from wilson.com
+function isWilsonUrl(url) {
+  return url.includes('wilson.com');
+}
+
 // Function to fetch XML from a given URL
 async function fetchXml(url) {
   try {
-    const response = await axios.get(url);
+    // Configure request options
+    const requestOptions = {};
+
+    // Add special header for Wilson.com
+    if (isWilsonUrl(url)) {
+      console.log('Adding special header for Wilson.com request');
+      requestOptions.headers = {
+        eds_process: 'h9E9Fvp#kvbpq93m',
+      };
+    }
+
+    const response = await axios.get(url, requestOptions);
     return response.data;
   } catch (error) {
     console.error(`Error fetching XML from ${url}: ${error.message}`);
@@ -41,7 +57,17 @@ async function getSitemapUrls(xmlContent) {
 // Function to fetch the HTML content of a page
 async function fetchPageContent(url) {
   try {
-    const response = await axios.get(url);
+    // Configure request options
+    const requestOptions = {};
+
+    // Add special header for Wilson.com
+    if (isWilsonUrl(url)) {
+      requestOptions.headers = {
+        eds_process: 'h9E9Fvp#kvbpq93m',
+      };
+    }
+
+    const response = await axios.get(url, requestOptions);
     return response.data;
   } catch (error) {
     console.error(`Error fetching page content for ${url}: ${error.message}`);

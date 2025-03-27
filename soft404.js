@@ -5,9 +5,13 @@ const fs = require('fs');
 const path = require('path');
 const { sitemapUrls } = require('./sitemapconfig');
 
+// Function to check if a URL is from wilson.com
+function isWilsonUrl(url) {
+  return url.includes('wilson.com');
+}
+
 // Common soft 404 indicators in different languages - refined to reduce false positives
 const SOFT_404_INDICATORS = {
-  // These are strong indicators that almost always indicate a soft 404
   strong: [
     '404 not found',
     'page not found',
@@ -64,12 +68,20 @@ const FALSE_POSITIVE_TERMS = [
 async function fetchContent(url) {
   try {
     console.log(`Fetching content from ${url}...`);
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-      },
-    });
+
+    // Configure request headers
+    const headers = {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    };
+
+    // Add special header for Wilson.com
+    if (isWilsonUrl(url)) {
+      console.log('Adding special header for Wilson.com request');
+      headers['eds_process'] = 'h9E9Fvp#kvbpq93m';
+    }
+
+    const response = await axios.get(url, { headers });
     console.log(`Successfully fetched content from ${url}`);
     return response.data;
   } catch (error) {
@@ -144,13 +156,24 @@ async function getSitemapsOrUrls(content) {
 async function fetchPageContent(url) {
   try {
     console.log(`Fetching content for: ${url}`);
+
+    // Configure request headers
+    const headers = {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    };
+
+    // Add special header for Wilson.com
+    if (isWilsonUrl(url)) {
+      console.log('Adding special header for Wilson.com request');
+      headers['eds_process'] = 'h9E9Fvp#kvbpq93m';
+    }
+
     const response = await axios.get(url, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-      },
+      headers,
       timeout: 15000, // 15 seconds timeout
     });
+
     console.log(
       `Successfully fetched content for: ${url} (${response.status})`
     );
