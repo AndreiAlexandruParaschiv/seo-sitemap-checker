@@ -1,4 +1,32 @@
 node_modules
 .idea
 .vscode
+
+# DS_Store files
+.DS_Store
+**/.DS_Store
+
+# Results folders - allow folders but ignore CSV and JSON files
 /results/*
+!/results/
+/results/**/*.csv
+/results/**/*.json
+
+/resultsmeta/*
+!/resultsmeta/
+/resultsmeta/**/*.csv
+/resultsmeta/**/*.json
+
+/results404/*
+!/results404/
+/results404/**/*.csv
+/results404/**/*.json
+
+/resultssoft404/*
+!/resultssoft404/
+/resultssoft404/**/*.csv
+/resultssoft404/**/*.json
+
+# Optional: Uncomment these lines if you want to make exceptions for specific files
+# !/results/**/specific-file-to-keep.json
+# !/resultsmeta/**/specific-file-to-keep.json
