@@ -4,6 +4,77 @@ const xml2js = require('xml2js');
 const { sitemapUrls, sitemaps } = require('./sitemapconfig'); // import multiple sitemaps
 const path = require('path');
 
+/**
+ * Find the closest matching URL for a 404 error
+ * @param {string} notFoundUrl - The URL that returned 404
+ * @param {Array<string>} validUrls - List of valid URLs from the sitemap
+ * @returns {string} - The closest matching URL or empty string if none found
+ */
+function findSimilarUrl(notFoundUrl, validUrls) {
+  if (!validUrls || validUrls.length === 0) return '';
+
+  try {
+    // Parse the not found URL
+    const parsedUrl = new URL(notFoundUrl);
+    const urlPath = parsedUrl.pathname;
+
+    // Strategy 1: Try parent paths
+    const pathParts = urlPath.split('/').filter((part) => part);
+    for (let i = pathParts.length - 1; i >= 0; i--) {
+      const parentPath = '/' + pathParts.slice(0, i).join('/');
+      const parentUrl = `${parsedUrl.origin}${parentPath}`;
+
+      // Check if this parent URL exists in our valid URLs
+      if (validUrls.includes(parentUrl)) {
+        return parentUrl;
+      }
+    }
+
+    // Strategy 2: Look for similar URLs with path pattern matching
+    // Extract potential keywords from the path
+    const keywords = pathParts.flatMap((part) => part.split('-'));
+    const relevantUrls = validUrls.filter((url) => {
+      // Only consider URLs from the same domain
+      return url.startsWith(parsedUrl.origin);
+    });
+
+    // Find URLs that contain similar path segments
+    const similarUrls = relevantUrls.filter((url) => {
+      try {
+        const urlPathParts = new URL(url).pathname
+          .split('/')
+          .filter((part) => part);
+        const pathKeywords = urlPathParts.flatMap((part) => part.split('-'));
+
+        // Check for keyword overlap
+        return keywords.some(
+          (keyword) =>
+            keyword.length > 3 && // Only consider meaningful keywords
+            pathKeywords.some(
+              (pathKeyword) =>
+                pathKeyword.includes(keyword) || keyword.includes(pathKeyword)
+            )
+        );
+      } catch (e) {
+        return false;
+      }
+    });
+
+    // Return the most similar URL if found
+    if (similarUrls.length > 0) {
+      return similarUrls[0]; // Return the first match
+    }
+
+    // Strategy 3: Default to the site homepage if nothing else matches
+    return parsedUrl.origin;
+  } catch (error) {
+    console.error(
+      `Error finding similar URL for ${notFoundUrl}: ${error.message}`
+    );
+    return '';
+  }
+}
+
 // Function to check if a URL is from wilson.com
 function isWilsonUrl(url) {
   return url.includes('wilson.com');
@@ -238,6 +309,9 @@ async function processSitemap(sitemapUrl) {
   let errorCount = 0;
   let redundantCount = 0;
 
+  // Collect valid URLs (200) for suggesting alternatives to 404s
+  const validUrls = [];
+
   // Create a map of normalized URLs for easier comparison
   const normalizedUrlMap = new Map();
   urls.forEach((url) => {
@@ -257,13 +331,20 @@ async function processSitemap(sitemapUrl) {
     let redirectInSitemap = 'No';
     let redundantUrl = false;
     let targetUrl = '';
+    let urlSuggested = '';
 
+    // Track valid URLs for suggesting alternatives to 404s
+    if (result.status === 200) {
+      validUrls.push(url);
+      successCount++;
+    }
     // Check if the redirect target is in the sitemap
-    if (
+    else if (
       (result.status === 301 || result.status === 302) &&
       result.redirectUrl
     ) {
       redirectCount++;
+      urlSuggested = result.redirectUrl;
       const normalizedRedirectUrl = normalizeUrl(result.redirectUrl, url);
 
       // Check if the redirect target is in the sitemap
@@ -283,8 +364,21 @@ async function processSitemap(sitemapUrl) {
           `  ➤ REDUNDANT URL: Should be removed from sitemap (redirects to ${targetUrl})`
         );
       }
-    } else if (result.status === 200) {
-      successCount++;
+    }
+    // For 404 errors, suggest similar URLs
+    else if (result.status === 404) {
+      errorCount++;
+      console.log(`  ➤ Looking for similar URL to suggest for 404...`);
+
+      // Wait for the first pass to collect valid URLs before suggesting
+      if (i > urls.length / 2 && validUrls.length > 0) {
+        urlSuggested = findSimilarUrl(url, validUrls);
+        if (urlSuggested) {
+          console.log(`  ➤ Suggesting: ${urlSuggested}`);
+        }
+      } else {
+        console.log(`  ➤ Will suggest URL after collecting more data`);
+      }
     } else {
       errorCount++;
     }
@@ -293,10 +387,23 @@ async function processSitemap(sitemapUrl) {
       url: result.url,
       status: result.status,
       redirectUrl: result.redirectUrl || '',
+      urlSuggested: urlSuggested,
       redirectInSitemap,
       redundantUrl,
       targetUrl,
     });
+  }
+
+  // Second pass to add suggestions for 404s that didn't get suggestions in the first pass
+  console.log('Making a second pass to suggest URLs for all 404 errors...');
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+
+    // For 404 errors that don't have suggestions yet
+    if (result.status === 404 && !result.urlSuggested && validUrls.length > 0) {
+      result.urlSuggested = findSimilarUrl(result.url, validUrls);
+      console.log(`Found suggestion for ${result.url}: ${result.urlSuggested}`);
+    }
   }
 
   // Group redundant URLs (URLs that redirect to other pages in the sitemap)
@@ -307,8 +414,8 @@ async function processSitemap(sitemapUrl) {
     .map(
       (result) =>
         `${result.url},${result.status},${result.redirectUrl},${
-          result.redirectInSitemap
-        },${result.redundantUrl ? 'Yes' : 'No'}`
+          result.urlSuggested
+        },${result.redirectInSitemap},${result.redundantUrl ? 'Yes' : 'No'}`
     )
     .join('\n');
 
@@ -334,7 +441,7 @@ async function processSitemap(sitemapUrl) {
   // Include the columns in CSV
   fs.writeFileSync(
     filename,
-    `URL,Status,Redirect URL,Redirect in Sitemap,Redundant URL\n${csvContent}\n${summary}`
+    `URL,Status,Redirect URL,URL Suggested,Redirect in Sitemap,Redundant URL\n${csvContent}\n${summary}`
   );
   console.log(`Results saved to ${filename}`);
 
