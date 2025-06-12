@@ -4,6 +4,8 @@ const xml2js = require('xml2js');
 const { sitemapUrls, sitemaps } = require('./sitemapconfig'); // import multiple sitemaps
 const path = require('path');
 
+const CONCURRENCY_LIMIT = 10; // Number of concurrent HTTP requests
+
 /**
  * Find the closest matching URL for a 404 error
  * @param {string} notFoundUrl - The URL that returned 404
@@ -96,7 +98,7 @@ async function fetchXml(url) {
     // Add special header for Wilson.com
     if (isWilsonUrl(url)) {
       console.log('Adding special header for Wilson.com request');
-      requestOptions.headers['eds_process'] = 'h9E9Fvp#kvbpq93m';
+      requestOptions.headers['eds_process'] = 'special-wilson-header';
     }
 
     const response = await axios.get(url, requestOptions);
@@ -150,8 +152,6 @@ async function getSitemapsOrUrls(xmlContent) {
 // Function to check the status of a URL
 async function checkUrlStatus(url) {
   try {
-    console.log(`Checking URL: ${url}`);
-
     // Configure request options
     const requestOptions = {
       headers: {
@@ -165,16 +165,13 @@ async function checkUrlStatus(url) {
 
     // Add special header for Wilson.com
     if (isWilsonUrl(url)) {
-      requestOptions.headers['eds_process'] = 'h9E9Fvp#kvbpq93m';
+      requestOptions.headers['eds_process'] = 'special-header-for-wilson';
     }
 
     const response = await axios.get(url, requestOptions);
 
     // Handle 3xx redirects
     if (response.status === 301 || response.status === 302) {
-      console.log(
-        `  ➤ Redirect (${response.status}): ${url} → ${response.headers.location}`
-      );
       return {
         url,
         status: response.status,
@@ -182,14 +179,12 @@ async function checkUrlStatus(url) {
       };
     }
 
-    console.log(`  ➤ Success (${response.status}): ${url}`);
     return { url, status: response.status };
   } catch (error) {
     // Catch network errors or other types of issues
     const errorStatus = error.response
       ? error.response.status
       : 'Network Error';
-    console.log(`  ➤ Error (${errorStatus}): ${url}`);
     return { url, status: errorStatus };
   }
 }
@@ -260,9 +255,61 @@ function normalizeUrl(url, baseUrl) {
   }
 }
 
+/**
+ * Utility to run async tasks with concurrency limit
+ */
+async function runWithConcurrency(tasks, limit, onProgress) {
+  let index = 0;
+  let completed = 0;
+  const results = new Array(tasks.length);
+  const total = tasks.length;
+
+  async function worker() {
+    while (index < tasks.length) {
+      const current = index++;
+      try {
+        results[current] = await tasks[current]();
+      } catch (e) {
+        results[current] = undefined;
+      }
+      completed++;
+      // Print progress every 100 URLs, and always for the first and last
+      if (onProgress && (completed === 1 || completed % 100 === 0 || completed === total)) {
+        onProgress(completed, total);
+      }
+    }
+  }
+
+  const workers = Array(Math.min(limit, tasks.length)).fill(0).map(worker);
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Detect duplicate URLs and write to CSV if any found
+ */
+function detectAndWriteDuplicates(urls, sitemapUrl) {
+  const urlCount = {};
+  for (const url of urls) {
+    urlCount[url] = (urlCount[url] || 0) + 1;
+  }
+  const duplicates = Object.entries(urlCount).filter(([_, count]) => count > 1);
+  if (duplicates.length === 0) return;
+
+  const resultsDir = createResultsDirectory(sitemapUrl);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const sitemapName = getFormattedSitemapName(sitemapUrl);
+  const filename = path.join(resultsDir, `sitemap_duplicates_${sitemapName}_${timestamp}.csv`);
+  const csv = ['Duplicated URL,Count', ...duplicates.map(([url, count]) => `${url},${count}`)].join('\n');
+  fs.writeFileSync(filename, csv);
+  console.log(`Found ${duplicates.length} duplicated URLs. Duplicates saved to ${filename}`);
+}
+
 // Function to process a single sitemap
 async function processSitemap(sitemapUrl) {
   console.log(`\n========== Processing sitemap: ${sitemapUrl} ==========\n`);
+
+  const startTime = Date.now();
 
   const sitemapXml = await fetchXml(sitemapUrl);
   if (!sitemapXml) {
@@ -280,17 +327,14 @@ async function processSitemap(sitemapUrl) {
 
   // If it's a sitemap index, process each child sitemap
   if (sitemapData.type === 'index') {
-    console.log(
-      `Found sitemap index with ${sitemapData.urls.length} child sitemaps`
-    );
     let totalResults = {
       totalUrls: 0,
       successCount: 0,
       redirectCount: 0,
       errorCount: 0,
       redundantCount: 0,
+      elapsedSeconds: 0,
     };
-
     for (const childSitemapUrl of sitemapData.urls) {
       const result = await processSitemap(childSitemapUrl);
       if (result) {
@@ -299,138 +343,105 @@ async function processSitemap(sitemapUrl) {
         totalResults.redirectCount += result.redirectCount;
         totalResults.errorCount += result.errorCount;
         totalResults.redundantCount += result.redundantCount || 0;
+        totalResults.elapsedSeconds += result.elapsedSeconds || 0;
       }
     }
-
     return totalResults;
   }
 
   const urls = Array.from(new Set(sitemapData.urls));
-  console.log(`Processing ${urls.length} URLs from sitemap: ${sitemapUrl}`);
+  // Detect and write duplicates (using original list, not deduped)
+  detectAndWriteDuplicates(sitemapData.urls, sitemapUrl);
+
+  console.log(`Total URLs to check: ${urls.length}`);
 
   const results = [];
   let successCount = 0;
   let redirectCount = 0;
   let errorCount = 0;
   let redundantCount = 0;
-
-  // Collect valid URLs (200) for suggesting alternatives to 404s
   const validUrls = [];
-
-  // Create a map of normalized URLs for easier comparison
   const normalizedUrlMap = new Map();
   urls.forEach((url) => {
     normalizedUrlMap.set(normalizeUrl(url, sitemapUrl), url);
   });
 
-  // Process each URL in the sitemap
-  for (let i = 0; i < urls.length; i++) {
-    const url = urls[i];
-    console.log(
-      `[${(i + 1).toString().padStart(2, '0')}/${
-        urls.length
-      }] Checking URL: ${url}`
-    );
-
+  // Prepare all check tasks
+  const tasks = urls.map((url) => async () => {
     const result = await checkUrlStatus(url);
-    let redirectInSitemap = 'No';
-    let redundantUrl = false;
+    return { url, ...result };
+  });
+
+  // Run with concurrency and progress
+  let lastPercent = 0;
+  const allResults = await runWithConcurrency(tasks, CONCURRENCY_LIMIT, (done, total) => {
+    const percent = Math.floor((done / total) * 100);
+    if (percent !== lastPercent && percent % 5 === 0) {
+      console.log(`Progress: ${done}/${total} URLs checked (${percent}%)`);
+      lastPercent = percent;
+    }
+  });
+
+  // Process results
+  for (let i = 0; i < allResults.length; i++) {
+    const { url, status, redirectUrl } = allResults[i];
+    let redirectInSitemapRedundant = 'No';
     let targetUrl = '';
     let urlSuggested = '';
-
-    // Track valid URLs for suggesting alternatives to 404s
-    if (result.status === 200) {
+    if (status === 200) {
       validUrls.push(url);
       successCount++;
-    }
-    // Check if the redirect target is in the sitemap
-    else if (
-      (result.status === 301 || result.status === 302) &&
-      result.redirectUrl
-    ) {
+    } else if ((status === 301 || status === 302) && redirectUrl) {
       redirectCount++;
-      urlSuggested = result.redirectUrl;
-      const normalizedRedirectUrl = normalizeUrl(result.redirectUrl, url);
-
-      // Check if the redirect target is in the sitemap
+      urlSuggested = redirectUrl;
+      const normalizedRedirectUrl = normalizeUrl(redirectUrl, url);
       for (const [normalizedUrl, originalUrl] of normalizedUrlMap.entries()) {
         if (normalizedUrl === normalizedRedirectUrl) {
-          redirectInSitemap = 'Yes';
-          redundantUrl = true;
+          redirectInSitemapRedundant = 'Yes';
           targetUrl = originalUrl;
           redundantCount++;
           break;
         }
       }
-
-      console.log(`  ➤ Redirect target in sitemap: ${redirectInSitemap}`);
-      if (redundantUrl) {
-        console.log(
-          `  ➤ REDUNDANT URL: Should be removed from sitemap (redirects to ${targetUrl})`
-        );
-      }
-    }
-    // For 404 errors, suggest similar URLs
-    else if (result.status === 404) {
+    } else if (status === 404) {
       errorCount++;
-      console.log(`  ➤ Looking for similar URL to suggest for 404...`);
-
-      // Wait for the first pass to collect valid URLs before suggesting
-      if (i > urls.length / 2 && validUrls.length > 0) {
+      if (validUrls.length > 0) {
         urlSuggested = findSimilarUrl(url, validUrls);
-        if (urlSuggested) {
-          console.log(`  ➤ Suggesting: ${urlSuggested}`);
-        }
-      } else {
-        console.log(`  ➤ Will suggest URL after collecting more data`);
       }
     } else {
       errorCount++;
     }
-
     results.push({
-      url: result.url,
-      status: result.status,
-      redirectUrl: result.redirectUrl || '',
-      urlSuggested: urlSuggested,
-      redirectInSitemap,
-      redundantUrl,
+      url,
+      status,
+      redirectUrl: redirectUrl || '',
+      urlSuggested,
+      redirectInSitemapRedundant,
       targetUrl,
     });
   }
 
-  // Second pass to add suggestions for 404s that didn't get suggestions in the first pass
-  console.log('Making a second pass to suggest URLs for all 404 errors...');
+  // Second pass for 404s without suggestions
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
-
-    // For 404 errors that don't have suggestions yet
     if (result.status === 404 && !result.urlSuggested && validUrls.length > 0) {
       result.urlSuggested = findSimilarUrl(result.url, validUrls);
-      console.log(`Found suggestion for ${result.url}: ${result.urlSuggested}`);
     }
   }
-
-  // Group redundant URLs (URLs that redirect to other pages in the sitemap)
-  const redundantUrls = results.filter((result) => result.redundantUrl);
 
   // Prepare CSV rows
   const csvContent = results
     .map(
       (result) =>
-        `${result.url},${result.status},${result.redirectUrl},${
-          result.urlSuggested
-        },${result.redirectInSitemap},${result.redundantUrl ? 'Yes' : 'No'}`
+        `${result.url},${result.status},${result.redirectUrl},${result.urlSuggested},${result.redirectInSitemapRedundant}`
     )
     .join('\n');
 
   const totalUrls = results.length;
   const percentOk = ((successCount / totalUrls) * 100).toFixed(2);
-  const percentNotOk = (
-    ((redirectCount + errorCount) / totalUrls) *
-    100
-  ).toFixed(2);
+  const percentNotOk = (((redirectCount + errorCount) / totalUrls) * 100).toFixed(2);
   const percentRedundant = ((redundantCount / totalUrls) * 100).toFixed(2);
+  const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(2);
 
   const summary = [
     `Total URLs Checked:,${totalUrls}`,
@@ -439,14 +450,13 @@ async function processSitemap(sitemapUrl) {
     `Errors:,${errorCount}`,
     `Redundant URLs:,${redundantCount} (${percentRedundant}%)`,
     `Not OK Percentage:,${percentNotOk}%`,
+    `Elapsed Time (seconds):,${elapsedSeconds}`,
   ].join('\n');
 
   const filename = generateFilename(sitemapUrl);
-
-  // Include the columns in CSV
   fs.writeFileSync(
     filename,
-    `URL,Status,Redirect URL,URL Suggested,Redirect in Sitemap,Redundant URL\n${csvContent}\n${summary}`
+    `URL,Status,Redirect URL,URL Suggested,Redirect in Sitemap(redundant)\n${csvContent}\n${summary}`
   );
   console.log(`Results saved to ${filename}`);
 
@@ -458,7 +468,7 @@ async function processSitemap(sitemapUrl) {
   console.log(`Errors: ${errorCount}`);
   console.log(`Redundant URLs: ${redundantCount} (${percentRedundant}%)`);
   console.log(`Not OK Percentage: ${percentNotOk}%`);
-  console.log(`Results saved to: ${filename}`);
+  console.log(`Elapsed Time (seconds): ${elapsedSeconds}`);
   console.log();
 
   return {
@@ -467,6 +477,7 @@ async function processSitemap(sitemapUrl) {
     redirectCount,
     errorCount,
     redundantCount,
+    elapsedSeconds: parseFloat(elapsedSeconds),
   };
 }
 
@@ -475,11 +486,14 @@ async function main() {
   console.log('Starting Sitemap URL Verification...');
   console.log(`Checking ${sitemapUrls.length} sitemaps`);
 
+  const overallStart = Date.now();
+
   let totalUrls = 0;
   let totalSuccessCount = 0;
   let totalRedirectCount = 0;
   let totalErrorCount = 0;
   let totalRedundantCount = 0;
+  let totalElapsedSeconds = 0;
 
   for (const sitemapUrl of sitemapUrls) {
     const result = await processSitemap(sitemapUrl);
@@ -489,6 +503,7 @@ async function main() {
       totalRedirectCount += result.redirectCount;
       totalErrorCount += result.errorCount;
       totalRedundantCount += result.redundantCount || 0;
+      totalElapsedSeconds += result.elapsedSeconds || 0;
     }
   }
 
@@ -515,6 +530,8 @@ async function main() {
       `Redundant URLs: ${totalRedundantCount} (${overallPercentRedundant}%)`
     );
     console.log(`Not OK Percentage: ${overallPercentNotOk}%`);
+    const overallElapsed = ((Date.now() - overallStart) / 1000).toFixed(2);
+    console.log(`Elapsed Time (seconds): ${overallElapsed}`);
   } else {
     console.log(
       'No URLs were checked. Please check your sitemap configuration.'

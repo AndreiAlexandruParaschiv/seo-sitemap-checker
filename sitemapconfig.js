@@ -2,8 +2,8 @@
 const sitemaps = [
   // Fill in the sitemaps you want to check with their corresponding siteId
   {
-    url: 'https://domain/sitemap.xml',
-    siteId: 'siteId',
+    url: 'https://www.jet2holidays.com/sitemap.xml',
+    siteId: '',
   }
 ];
 

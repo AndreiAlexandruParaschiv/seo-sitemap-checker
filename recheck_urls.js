@@ -24,7 +24,7 @@ async function checkUrlStatus(url) {
     if (isWilsonUrl(url)) {
       console.log('Adding special header for Wilson.com request');
       requestOptions.headers = {
-        eds_process: 'h9E9Fvp#kvbpq93m',
+        eds_process: 'special-wilson-header',
       };
     }
 
@@ -126,7 +126,6 @@ async function recheckUrls(csvFilePath) {
       });
   }).catch((error) => {
     console.error(`Error reading CSV: ${error.message}`);
-    return;
   });
 
   if (urls.length === 0) {

@@ -20,7 +20,7 @@ async function fetchXml(url) {
     if (isWilsonUrl(url)) {
       console.log('Adding special header for Wilson.com request');
       requestOptions.headers = {
-        eds_process: 'h9E9Fvp#kvbpq93m',
+        eds_process: 'special-wilson-header',
       };
     }
 
@@ -63,7 +63,7 @@ async function fetchPageContent(url) {
     // Add special header for Wilson.com
     if (isWilsonUrl(url)) {
       requestOptions.headers = {
-        eds_process: 'h9E9Fvp#kvbpq93m',
+        eds_process: 'special-wilson-header',
       };
     }
 

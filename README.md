@@ -82,7 +82,7 @@ This enhanced configuration streamlines the workflow from scanning to opportunit
 
 Some sites require special HTTP headers for access:
 
-- **Wilson.com**: All requests to wilson.com automatically include a custom header `eds_process: h9E9Fvp#kvbpq93m` to authenticate requests.
+include a custom header to authenticate requests.
 
 If you need to add additional special headers for other sites, you can modify the relevant request functions in each script.
 

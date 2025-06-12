@@ -78,7 +78,7 @@ async function fetchContent(url) {
     // Add special header for Wilson.com
     if (isWilsonUrl(url)) {
       console.log('Adding special header for Wilson.com request');
-      headers['eds_process'] = 'h9E9Fvp#kvbpq93m';
+      headers['eds_process'] = 'special-wilson-header';
     }
 
     const response = await axios.get(url, { headers });
@@ -166,7 +166,7 @@ async function fetchPageContent(url) {
     // Add special header for Wilson.com
     if (isWilsonUrl(url)) {
       console.log('Adding special header for Wilson.com request');
-      headers['eds_process'] = 'h9E9Fvp#kvbpq93m';
+      headers['eds_process'] = 'special-wilson-header';
     }
 
     const response = await axios.get(url, {
@@ -213,18 +213,14 @@ function isLikelyLegitPage(url) {
   }
 
   // Check for common legitimate page patterns
-  if (
-    path.endsWith('.pdf') ||
-    path.endsWith('.html') ||
-    path.includes('/blog/') ||
-    path.includes('/article/') ||
-    path.includes('/product/') ||
-    path.includes('/category/')
-  ) {
-    return true;
-  }
+  return path.endsWith('.pdf') ||
+      path.endsWith('.html') ||
+      path.includes('/blog/') ||
+      path.includes('/article/') ||
+      path.includes('/product/') ||
+      path.includes('/category/');
 
-  return false;
+
 }
 
 // Function to check if a page is a soft 404
