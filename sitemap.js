@@ -86,14 +86,17 @@ async function fetchXml(url) {
     console.log(`Fetching XML from ${url}...`);
 
     // Configure request options
-    const requestOptions = {};
+    const requestOptions = {
+      headers: {
+        //'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'User-Agent': 'AhrefsBot',
+      },
+    };
 
     // Add special header for Wilson.com
     if (isWilsonUrl(url)) {
       console.log('Adding special header for Wilson.com request');
-      requestOptions.headers = {
-        eds_process: 'h9E9Fvp#kvbpq93m',
-      };
+      requestOptions.headers['eds_process'] = 'h9E9Fvp#kvbpq93m';
     }
 
     const response = await axios.get(url, requestOptions);
@@ -151,6 +154,10 @@ async function checkUrlStatus(url) {
 
     // Configure request options
     const requestOptions = {
+      headers: {
+        //'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'User-Agent': 'AhrefsBot', // Use AhrefsBot to avoid blocking
+      },
       maxRedirects: 0, // prevent following redirects
       validateStatus: (status) => status < 400, // accept 3xx to capture redirects
       timeout: 15000, // 15 seconds timeout
@@ -158,9 +165,7 @@ async function checkUrlStatus(url) {
 
     // Add special header for Wilson.com
     if (isWilsonUrl(url)) {
-      requestOptions.headers = {
-        eds_process: 'h9E9Fvp#kvbpq93m',
-      };
+      requestOptions.headers['eds_process'] = 'h9E9Fvp#kvbpq93m';
     }
 
     const response = await axios.get(url, requestOptions);
