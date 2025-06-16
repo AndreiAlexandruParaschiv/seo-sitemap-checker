@@ -90,8 +90,8 @@ async function fetchXml(url) {
     // Configure request options
     const requestOptions = {
       headers: {
-        //'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'User-Agent': 'AhrefsBot',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        //'User-Agent': 'AhrefsBot',
       },
     };
 
@@ -155,8 +155,8 @@ async function checkUrlStatus(url) {
     // Configure request options
     const requestOptions = {
       headers: {
-        //'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'User-Agent': 'AhrefsBot', // Use AhrefsBot to avoid blocking
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        // 'User-Agent': 'AhrefsBot',
       },
       maxRedirects: 0, // prevent following redirects
       validateStatus: (status) => status < 400, // accept 3xx to capture redirects
