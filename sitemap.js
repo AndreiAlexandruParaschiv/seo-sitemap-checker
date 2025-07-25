@@ -1,7 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const xml2js = require('xml2js');
-const { sitemapUrls, sitemaps } = require('./sitemapconfig'); // import multiple sitemaps
+const { sitemapUrls } = require('./sitemapconfig'); // import multiple sitemaps
 const path = require('path');
 
 const CONCURRENCY_LIMIT = 10; // Number of concurrent HTTP requests
@@ -77,11 +77,6 @@ function findSimilarUrl(notFoundUrl, validUrls) {
   }
 }
 
-// Function to check if a URL is from wilson.com
-function isWilsonUrl(url) {
-  return url.includes('wilson.com');
-}
-
 // Function to fetch XML from a given URL
 async function fetchXml(url) {
   try {
@@ -94,12 +89,6 @@ async function fetchXml(url) {
         //'User-Agent': 'AhrefsBot',
       },
     };
-
-    // Add special header for Wilson.com
-    if (isWilsonUrl(url)) {
-      console.log('Adding special header for Wilson.com request');
-      requestOptions.headers['eds_process'] = 'special-wilson-header';
-    }
 
     const response = await axios.get(url, requestOptions);
     console.log(`Successfully fetched XML from ${url}`);
@@ -134,13 +123,13 @@ async function getSitemapsOrUrls(xmlContent) {
     console.log('Detected sitemap index with multiple sitemaps');
     return {
       type: 'index',
-      urls: parsedXml.sitemapindex.sitemap.map((sitemap) => sitemap.loc[0]),
+      urls: parsedXml.sitemapindex.sitemap.map((sitemap) => sitemap.loc[0].trim()),
     };
   } else if (parsedXml.urlset && parsedXml.urlset.url) {
     console.log(`Detected sitemap with ${parsedXml.urlset.url.length} URLs`);
     return {
       type: 'sitemap',
-      urls: parsedXml.urlset.url.map((url) => url.loc[0]),
+      urls: parsedXml.urlset.url.map((url) => url.loc[0].trim()),
     };
   } else {
     throw new Error(
@@ -162,11 +151,6 @@ async function checkUrlStatus(url) {
       validateStatus: (status) => status < 400, // accept 3xx to capture redirects
       timeout: 15000, // 15 seconds timeout
     };
-
-    // Add special header for Wilson.com
-    if (isWilsonUrl(url)) {
-      requestOptions.headers['eds_process'] = 'special-header-for-wilson';
-    }
 
     const response = await axios.get(url, requestOptions);
 
