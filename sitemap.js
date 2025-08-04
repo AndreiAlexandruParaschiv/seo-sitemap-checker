@@ -4,7 +4,17 @@ const xml2js = require('xml2js');
 const { sitemapUrls } = require('./sitemapconfig'); // import multiple sitemaps
 const path = require('path');
 
-const CONCURRENCY_LIMIT = 10; // Number of concurrent HTTP requests
+// Rate limiting configuration to prevent 429 errors
+const CONCURRENCY_LIMIT = 3; // Reduced from 10 to 3 concurrent requests
+const REQUEST_DELAY = 500; // 500ms delay between requests
+const RETRY_ATTEMPTS = 3; // Number of retry attempts for 429 errors
+const RETRY_DELAY = 2000; // Base delay for retries (2 seconds)
+const TIMEOUT = 15000; // 15 seconds timeout - balanced for speed vs reliability
+
+// Sleep utility function
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /**
  * Find the closest matching URL for a 404 error
@@ -138,18 +148,28 @@ async function getSitemapsOrUrls(xmlContent) {
   }
 }
 
-// Function to check the status of a URL
-async function checkUrlStatus(url) {
+// Function to check the status of a URL with retry logic for 429 errors
+async function checkUrlStatus(url, attempt = 1) {
   try {
+    // Add delay between requests to avoid overwhelming the server
+    if (attempt === 1) {
+      await sleep(REQUEST_DELAY);
+    }
+
     // Configure request options
     const requestOptions = {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        // 'User-Agent': 'AhrefsBot',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
       },
       maxRedirects: 0, // prevent following redirects
-      validateStatus: (status) => status < 400, // accept 3xx to capture redirects
-      timeout: 15000, // 15 seconds timeout
+      validateStatus: (status) => status < 500, // accept everything except 5xx server errors
+      timeout: TIMEOUT,
     };
 
     const response = await axios.get(url, requestOptions);
@@ -165,10 +185,22 @@ async function checkUrlStatus(url) {
 
     return { url, status: response.status };
   } catch (error) {
-    // Catch network errors or other types of issues
-    const errorStatus = error.response
-      ? error.response.status
-      : 'Network Error';
+    // Handle 429 Too Many Requests with retry logic
+    if (error.response && error.response.status === 429 && attempt <= RETRY_ATTEMPTS) {
+      const retryDelay = RETRY_DELAY * Math.pow(2, attempt - 1); // Exponential backoff
+      console.log(`429 error for ${url}, retrying in ${retryDelay}ms (attempt ${attempt}/${RETRY_ATTEMPTS})`);
+      await sleep(retryDelay);
+      return checkUrlStatus(url, attempt + 1);
+    }
+
+    // Handle other 4xx and 5xx errors, or exhausted retries
+    const errorStatus = error.response ? error.response.status : 'Network Error';
+
+    // Log 429 errors that exceeded retry attempts
+    if (error.response && error.response.status === 429) {
+      console.log(`429 error for ${url} - exceeded retry attempts`);
+    }
+
     return { url, status: errorStatus };
   }
 }
@@ -467,7 +499,8 @@ async function processSitemap(sitemapUrl) {
 
 // Main function
 async function main() {
-  console.log('Starting Sitemap URL Verification...');
+  const startTime = new Date();
+  console.log(`Starting Sitemap URL Verification at ${startTime.toISOString()}...`);
   console.log(`Checking ${sitemapUrls.length} sitemaps`);
 
   const overallStart = Date.now();
@@ -492,7 +525,14 @@ async function main() {
   }
 
   // Display overall summary
+  const endTime = new Date();
+  const totalElapsedMs = Date.now() - overallStart;
+  const totalElapsedMinutes = (totalElapsedMs / 1000 / 60).toFixed(2);
+
   console.log('\n========== OVERALL SUMMARY ==========');
+  console.log(`Start Time: ${startTime.toISOString()}`);
+  console.log(`End Time: ${endTime.toISOString()}`);
+  console.log(`Total Execution Time: ${totalElapsedMinutes} minutes (${(totalElapsedMs / 1000).toFixed(2)} seconds)`);
   console.log(`Total URLs Checked: ${totalUrls}`);
   if (totalUrls > 0) {
     const overallPercentOk = ((totalSuccessCount / totalUrls) * 100).toFixed(2);
