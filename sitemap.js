@@ -9,7 +9,7 @@ const CONCURRENCY_LIMIT = 3; // Reduced from 10 to 3 concurrent requests
 const REQUEST_DELAY = 500; // 500ms delay between requests
 const RETRY_ATTEMPTS = 3; // Number of retry attempts for 429 errors
 const RETRY_DELAY = 2000; // Base delay for retries (2 seconds)
-const TIMEOUT = 15000; // 15 seconds timeout - balanced for speed vs reliability
+const TIMEOUT = 5000; // 5 seconds timeout
 
 // Sleep utility function
 function sleep(ms) {
@@ -172,7 +172,16 @@ async function checkUrlStatus(url, attempt = 1) {
       timeout: TIMEOUT,
     };
 
-    const response = await axios.get(url, requestOptions);
+    let response;
+
+    try {
+      // First, try HEAD request for faster checking
+      response = await axios.head(url, requestOptions);
+    } catch (headError) {
+      // If HEAD fails, fallback to GET request
+      console.log(`HEAD request failed for ${url}, falling back to GET: ${headError.response?.status || headError.message}`);
+      response = await axios.get(url, requestOptions);
+    }
 
     // Handle 3xx redirects
     if (response.status === 301 || response.status === 302) {
